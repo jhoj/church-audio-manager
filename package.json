@@ -1,0 +1,13 @@
+{
+  "name": "church-audio-manager",
+  "private": true,
+  "workspaces": [
+    "packages/widget",
+    "packages/desktop"
+  ],
+  "scripts": {
+    "widget": "npm run dev --workspace=packages/widget",
+    "widget:build": "npm run build --workspace=packages/widget",
+    "desktop": "npm run start --workspace=packages/desktop"
+  }
+}
