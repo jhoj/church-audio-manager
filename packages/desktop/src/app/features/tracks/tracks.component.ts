@@ -1,19 +1,22 @@
 import { Component, ElementRef, inject, OnDestroy, OnInit, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { SlicePipe } from '@angular/common';
 import { ApiService, Speaker, Series, Track } from '../../core/api.service';
 import { environment } from '../../../environments/environment';
 import { forkJoin } from 'rxjs';
+import { IconComponent } from '../../shared/icon.component';
+import { ConfirmDialogComponent } from '../../shared/confirm-dialog.component';
 
 type UploadState = 'idle' | 'uploading' | 'done' | 'error';
 
 @Component({
   selector: 'app-tracks',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, SlicePipe, IconComponent, ConfirmDialogComponent],
   template: `
     <div class="page-header">
       <h1>Tracks</h1>
-      <button class="btn btn-primary" (click)="openNew()">+ Add Track</button>
+      <button class="btn btn-icon btn-primary" title="Add Track" (click)="openNew()"><app-icon name="plus" [size]="18" /></button>
     </div>
 
     <!-- Filter bar -->
@@ -30,7 +33,7 @@ type UploadState = 'idle' | 'uploading' | 'done' | 'error';
         <thead>
           <tr>
             <th style="width:32px"></th>
-            <th>Title</th><th>Type</th><th>Speaker</th><th>Series</th><th>Date</th><th>Status</th><th></th>
+            <th style="width:20%">Title</th><th style="width:10%">Type</th><th style="width:14%">Speaker</th><th style="width:14%">Series</th><th style="width:10%">Date</th><th style="width:10%">Status</th><th style="width:12%"></th>
           </tr>
         </thead>
         <tbody>
@@ -52,9 +55,9 @@ type UploadState = 'idle' | 'uploading' | 'done' | 'error';
                   {{ t.isPublished ? 'Published' : 'Draft' }}
                 </span>
               </td>
-              <td style="display:flex;gap:8px;">
-                <button class="btn btn-ghost" (click)="openEdit(t)">Edit</button>
-                <button class="btn btn-danger" (click)="remove(t.id)">Delete</button>
+              <td style="white-space:nowrap;overflow:visible;">
+                <button class="btn btn-icon btn-ghost" (click)="openEdit(t)" title="Edit"><app-icon name="edit" [size]="16" /></button>
+                <button class="btn btn-icon btn-danger" (click)="remove(t.id)" title="Delete"><app-icon name="trash" [size]="16" /></button>
               </td>
             </tr>
           }
@@ -73,9 +76,9 @@ type UploadState = 'idle' | 'uploading' | 'done' | 'error';
     @if (nowPlaying()) {
       <div style="
         position:sticky;bottom:0;
-        background:#fff;border-top:1px solid var(--border);
+        background:var(--surface);border-top:1px solid var(--border);
         padding:12px 16px;display:flex;align-items:center;gap:14px;
-        box-shadow:0 -2px 8px rgba(0,0,0,0.06);
+        box-shadow:0 -2px 8px rgba(0,0,0,0.15);
       ">
         <!-- Track info -->
         <div style="min-width:0;flex:0 0 220px">
@@ -100,7 +103,9 @@ type UploadState = 'idle' | 'uploading' | 'done' | 'error';
         </audio>
 
         <!-- Close player -->
-        <button class="btn btn-ghost" style="flex-shrink:0" (click)="stopPlayer()">✕</button>
+        <button class="btn btn-icon btn-ghost" style="flex-shrink:0" (click)="stopPlayer()" title="Close">
+          <app-icon name="power" [size]="16" />
+        </button>
       </div>
     }
 
@@ -180,6 +185,16 @@ type UploadState = 'idle' | 'uploading' | 'done' | 'error';
         </div>
       </div>
     }
+
+    <app-confirm-dialog
+      [open]="!!deleteTarget()"
+      title="Delete Track"
+      message="This track and its audio file will be permanently deleted. This cannot be undone."
+      confirmLabel="Delete"
+      variant="danger"
+      icon="trash"
+      (confirmed)="confirmDelete()"
+      (cancelled)="deleteTarget.set(null)" />
   `,
 })
 export class TracksComponent implements OnInit, OnDestroy {
@@ -194,6 +209,7 @@ export class TracksComponent implements OnInit, OnDestroy {
   modalOpen = signal(false);
   editing = signal<Track | null>(null);
   saving = signal(false);
+  deleteTarget = signal<string | null>(null);
 
   nowPlaying = signal<Track | null>(null);
   paused = signal(true);
@@ -239,18 +255,15 @@ export class TracksComponent implements OnInit, OnDestroy {
     }
 
     // Different track — update src and play
-    // Electron intercepts this request and adds Authorization: Bearer <token>
-    // so the admin stream endpoint's JWT guard is satisfied transparently.
     this.nowPlaying.set(track);
     this.paused.set(true);
 
-    // Wait for the audio element to be rendered (it appears after nowPlaying is set)
     setTimeout(() => {
       const newEl = this.audioElRef?.nativeElement;
       if (!newEl) return;
       newEl.src = `${environment.apiUrl}/api/admin/tracks/${track.id}/stream`;
       newEl.load();
-      newEl.play().catch(() => {}); // play() may throw if user hasn't interacted yet
+      newEl.play().catch(() => {});
     }, 0);
   }
 
@@ -301,8 +314,12 @@ export class TracksComponent implements OnInit, OnDestroy {
     op.subscribe({ next: () => { this.closeModal(); this.load(); this.saving.set(false); }, error: () => this.saving.set(false) });
   }
 
-  remove(id: string) {
-    if (!confirm('Delete this track? This cannot be undone.')) return;
+  remove(id: string) { this.deleteTarget.set(id); }
+
+  confirmDelete() {
+    const id = this.deleteTarget();
+    if (!id) return;
+    this.deleteTarget.set(null);
     this.api.deleteTrack(id).subscribe(() => this.load());
   }
 

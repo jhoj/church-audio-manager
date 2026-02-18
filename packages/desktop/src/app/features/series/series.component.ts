@@ -2,15 +2,17 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { SlicePipe } from '@angular/common';
 import { ApiService, Series } from '../../core/api.service';
+import { IconComponent } from '../../shared/icon.component';
+import { ConfirmDialogComponent } from '../../shared/confirm-dialog.component';
 
 @Component({
   selector: 'app-series',
   standalone: true,
-  imports: [FormsModule, SlicePipe],
+  imports: [FormsModule, SlicePipe, IconComponent, ConfirmDialogComponent],
   template: `
     <div class="page-header">
       <h1>Series</h1>
-      <button class="btn btn-primary" (click)="openNew()">+ Add Series</button>
+      <button class="btn btn-icon btn-primary" title="Add Series" (click)="openNew()"><app-icon name="plus" [size]="18" /></button>
     </div>
 
     <div class="card" style="padding:0;overflow:hidden">
@@ -21,9 +23,9 @@ import { ApiService, Series } from '../../core/api.service';
             <tr>
               <td>{{ s.title }}</td>
               <td style="color:#888;font-size:13px;">{{ s.description | slice:0:80 }}{{ (s.description?.length ?? 0) > 80 ? '…' : '' }}</td>
-              <td style="display:flex;gap:8px;">
-                <button class="btn btn-ghost" (click)="openEdit(s)">Edit</button>
-                <button class="btn btn-danger" (click)="remove(s.id)">Delete</button>
+              <td style="white-space:nowrap;">
+                <button class="btn btn-icon btn-ghost" (click)="openEdit(s)" title="Edit"><app-icon name="edit" [size]="16" /></button>
+                <button class="btn btn-icon btn-danger" (click)="remove(s.id)" title="Delete"><app-icon name="trash" [size]="16" /></button>
               </td>
             </tr>
           }
@@ -48,6 +50,16 @@ import { ApiService, Series } from '../../core/api.service';
         </div>
       </div>
     }
+
+    <app-confirm-dialog
+      [open]="!!deleteTarget()"
+      title="Delete Series"
+      message="This series will be permanently removed."
+      confirmLabel="Delete"
+      variant="danger"
+      icon="trash"
+      (confirmed)="confirmDelete()"
+      (cancelled)="deleteTarget.set(null)" />
   `,
 })
 export class SeriesComponent implements OnInit {
@@ -55,6 +67,7 @@ export class SeriesComponent implements OnInit {
   series = signal<Series[]>([]);
   modalOpen = signal(false);
   editing = signal<Series | null>(null);
+  deleteTarget = signal<string | null>(null);
   form = { title: '', description: '', coverUrl: '' };
 
   ngOnInit() { this.load(); }
@@ -71,8 +84,12 @@ export class SeriesComponent implements OnInit {
     op.subscribe(() => { this.closeModal(); this.load(); });
   }
 
-  remove(id: string) {
-    if (!confirm('Delete series?')) return;
+  remove(id: string) { this.deleteTarget.set(id); }
+
+  confirmDelete() {
+    const id = this.deleteTarget();
+    if (!id) return;
+    this.deleteTarget.set(null);
     this.api.deleteSeries(id).subscribe(() => this.load());
   }
 }

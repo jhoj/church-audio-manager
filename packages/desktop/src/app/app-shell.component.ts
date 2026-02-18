@@ -1,23 +1,29 @@
 import { Component } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from './core/auth.service';
+import { IconComponent } from './shared/icon.component';
 
 @Component({
   selector: 'app-shell',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, IconComponent],
   template: `
     <div class="layout">
       <aside class="sidebar">
-        <div class="sidebar-logo">Church Audio</div>
+        <div class="sidebar-logo">
+          <app-icon name="church" [size]="22" class="logo-icon" />
+          <span class="logo-text">Church Audio</span>
+        </div>
         <nav class="sidebar-nav">
-          <a routerLink="/tracks"   routerLinkActive="active">&#127911; Tracks</a>
-          <a routerLink="/speakers" routerLinkActive="active">&#127908; Speakers</a>
-          <a routerLink="/series"   routerLinkActive="active">&#128218; Series</a>
-          <a routerLink="/api-keys" routerLinkActive="active">&#128273; API Keys</a>
+          <a routerLink="/tracks"   routerLinkActive="active"><app-icon name="music"      [size]="20" class="nav-icon" /><span class="nav-label">Tracks</span></a>
+          <a routerLink="/speakers" routerLinkActive="active"><app-icon name="users" [size]="20" class="nav-icon" /><span class="nav-label">Speakers</span></a>
+          <a routerLink="/series"   routerLinkActive="active"><app-icon name="layers"     [size]="20" class="nav-icon" /><span class="nav-label">Series</span></a>
+          <a routerLink="/api-keys" routerLinkActive="active"><app-icon name="key"        [size]="20" class="nav-icon" /><span class="nav-label">API Keys</span></a>
         </nav>
-        <div style="margin-top:auto; padding: 16px;">
-          <button class="btn btn-ghost" style="width:100%" (click)="logout()">Sign out</button>
+        <div class="sidebar-bottom">
+          <button class="btn btn-icon btn-ghost" title="Sign out" (click)="logout()">
+            <app-icon name="power" [size]="18" />
+          </button>
         </div>
       </aside>
       <main class="main-content">
