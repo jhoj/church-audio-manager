@@ -1,6 +1,7 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, ElementRef, inject, OnDestroy, OnInit, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ApiService, Speaker, Series, Track } from '../../core/api.service';
+import { environment } from '../../../environments/environment';
 import { forkJoin } from 'rxjs';
 
 type UploadState = 'idle' | 'uploading' | 'done' | 'error';
@@ -28,13 +29,20 @@ type UploadState = 'idle' | 'uploading' | 'done' | 'error';
       <table>
         <thead>
           <tr>
+            <th style="width:32px"></th>
             <th>Title</th><th>Type</th><th>Speaker</th><th>Series</th><th>Date</th><th>Status</th><th></th>
           </tr>
         </thead>
         <tbody>
           @for (t of tracks(); track t.id) {
-            <tr>
-              <td>{{ t.title }}</td>
+            <tr [class.ca-active]="nowPlaying()?.id === t.id" style="cursor:pointer">
+              <!-- Play / Pause button per row -->
+              <td (click)="togglePlay(t)">
+                <button class="ca-play-btn" style="width:32px;height:32px;font-size:13px;flex-shrink:0">
+                  {{ nowPlaying()?.id === t.id && !paused() ? '⏸' : '▶' }}
+                </button>
+              </td>
+              <td (click)="togglePlay(t)">{{ t.title }}</td>
               <td><span class="badge badge-{{ t.type.toLowerCase() }}">{{ t.type }}</span></td>
               <td>{{ t.speaker?.name ?? '—' }}</td>
               <td>{{ t.series?.title ?? '—' }}</td>
@@ -55,11 +63,46 @@ type UploadState = 'idle' | 'uploading' | 'done' | 'error';
     </div>
 
     <!-- Pagination -->
-    <div class="ca-pagination" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
       <button class="btn btn-ghost" [disabled]="page() <= 1" (click)="changePage(-1)">← Prev</button>
       <span style="line-height:2.2;font-size:14px;">Page {{ page() }}</span>
       <button class="btn btn-ghost" [disabled]="tracks().length < 50" (click)="changePage(1)">Next →</button>
     </div>
+
+    <!-- ── Sticky audio player bar ──────────────────────────────────────────── -->
+    @if (nowPlaying()) {
+      <div style="
+        position:sticky;bottom:0;
+        background:#fff;border-top:1px solid var(--border);
+        padding:12px 16px;display:flex;align-items:center;gap:14px;
+        box-shadow:0 -2px 8px rgba(0,0,0,0.06);
+      ">
+        <!-- Track info -->
+        <div style="min-width:0;flex:0 0 220px">
+          <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+            {{ nowPlaying()!.title }}
+          </div>
+          <div style="font-size:12px;color:var(--text-muted)">
+            {{ nowPlaying()!.speaker?.name ?? '' }}
+            {{ nowPlaying()!.speaker && nowPlaying()!.series ? ' · ' : '' }}
+            {{ nowPlaying()!.series?.title ?? '' }}
+          </div>
+        </div>
+
+        <!-- Native audio element — Electron injects Authorization header automatically -->
+        <audio #audioEl
+          style="flex:1;height:36px"
+          controls
+          preload="metadata"
+          (play)="paused.set(false)"
+          (pause)="paused.set(true)"
+          (ended)="paused.set(true)">
+        </audio>
+
+        <!-- Close player -->
+        <button class="btn btn-ghost" style="flex-shrink:0" (click)="stopPlayer()">✕</button>
+      </div>
+    }
 
     <!-- Modal -->
     @if (modalOpen()) {
@@ -139,7 +182,9 @@ type UploadState = 'idle' | 'uploading' | 'done' | 'error';
     }
   `,
 })
-export class TracksComponent implements OnInit {
+export class TracksComponent implements OnInit, OnDestroy {
+  @ViewChild('audioEl') audioElRef?: ElementRef<HTMLAudioElement>;
+
   private api = inject(ApiService);
 
   tracks = signal<Track[]>([]);
@@ -150,10 +195,14 @@ export class TracksComponent implements OnInit {
   editing = signal<Track | null>(null);
   saving = signal(false);
 
+  nowPlaying = signal<Track | null>(null);
+  paused = signal(true);
+
   filterPublished = '';
   isDragging = false;
   uploadState: UploadState = 'idle';
   uploadedFileKey = '';
+  uploadedContentType = '';
 
   form: {
     title: string; type: string; description: string; recordedAt: string;
@@ -168,6 +217,10 @@ export class TracksComponent implements OnInit {
     this.load();
   }
 
+  ngOnDestroy() {
+    this.audioElRef?.nativeElement.pause();
+  }
+
   load() {
     const pub = this.filterPublished === '' ? undefined : this.filterPublished === 'true';
     this.api.getTracks(this.page(), pub).subscribe(r => this.tracks.set(r.items));
@@ -175,7 +228,39 @@ export class TracksComponent implements OnInit {
 
   changePage(d: number) { this.page.update(p => p + d); this.load(); }
 
-  openNew()       { this.editing.set(null); this.form = this.emptyForm(); this.uploadedFileKey = ''; this.uploadState = 'idle'; this.modalOpen.set(true); }
+  // Toggle play/pause; if a different track is selected, switch to it
+  togglePlay(track: Track) {
+    const el = this.audioElRef?.nativeElement;
+
+    if (this.nowPlaying()?.id === track.id) {
+      // Same track — toggle
+      if (el?.paused) { el.play(); } else { el?.pause(); }
+      return;
+    }
+
+    // Different track — update src and play
+    // Electron intercepts this request and adds Authorization: Bearer <token>
+    // so the admin stream endpoint's JWT guard is satisfied transparently.
+    this.nowPlaying.set(track);
+    this.paused.set(true);
+
+    // Wait for the audio element to be rendered (it appears after nowPlaying is set)
+    setTimeout(() => {
+      const newEl = this.audioElRef?.nativeElement;
+      if (!newEl) return;
+      newEl.src = `${environment.apiUrl}/api/admin/tracks/${track.id}/stream`;
+      newEl.load();
+      newEl.play().catch(() => {}); // play() may throw if user hasn't interacted yet
+    }, 0);
+  }
+
+  stopPlayer() {
+    this.audioElRef?.nativeElement.pause();
+    this.nowPlaying.set(null);
+    this.paused.set(true);
+  }
+
+  openNew()       { this.editing.set(null); this.form = this.emptyForm(); this.uploadedFileKey = ''; this.uploadedContentType = ''; this.uploadState = 'idle'; this.modalOpen.set(true); }
   openEdit(t: Track) { this.editing.set(t); this.form = { title: t.title, type: t.type, description: t.description ?? '', recordedAt: t.recordedAt.slice(0,10), tags: t.tags ?? '', speakerId: t.speaker?.id ?? '', seriesId: t.series?.id ?? '', isPublished: t.isPublished }; this.modalOpen.set(true); }
   closeModal()    { this.modalOpen.set(false); }
 
@@ -194,7 +279,7 @@ export class TracksComponent implements OnInit {
   private upload(file: File) {
     this.uploadState = 'uploading';
     this.api.uploadFile(file).subscribe({
-      next: r => { this.uploadedFileKey = r.fileKey; this.uploadState = 'done'; },
+      next: r => { this.uploadedFileKey = r.fileKey; this.uploadedContentType = r.contentType; this.uploadState = 'done'; },
       error: () => { this.uploadState = 'error'; },
     });
   }
@@ -207,6 +292,7 @@ export class TracksComponent implements OnInit {
       speakerId: this.form.speakerId || null,
       seriesId: this.form.seriesId || null,
       fileKey: this.uploadedFileKey || undefined,
+      contentType: this.uploadedContentType || undefined,
     };
     const op = this.editing()
       ? this.api.updateTrack(this.editing()!.id, body)

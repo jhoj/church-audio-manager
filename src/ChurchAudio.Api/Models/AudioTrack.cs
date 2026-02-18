@@ -14,6 +14,9 @@ public class AudioTrack
     // Stored in MinIO; this is the object key
     public string FileKey { get; set; } = string.Empty;
 
+    // MIME type stored at upload time so the stream endpoint doesn't need to stat MinIO on every request
+    public string ContentType { get; set; } = "audio/mpeg";
+
     // Tags stored as comma-separated string; simple and EF-friendly
     public string? Tags { get; set; }
 

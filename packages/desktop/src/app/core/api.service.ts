@@ -41,7 +41,7 @@ export class ApiService {
     return this.http.delete<void>(`${this.base}/tracks/${id}`);
   }
 
-  uploadFile(file: File): Observable<{ fileKey: string }> {
+  uploadFile(file: File): Observable<{ fileKey: string; contentType: string }> {
     const form = new FormData();
     form.append('file', file);
     return this.http.post<{ fileKey: string }>(`${this.base}/tracks/upload`, form);

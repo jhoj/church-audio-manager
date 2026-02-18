@@ -48,6 +48,12 @@ input, select, textarea { width: 100%; padding: 8px 12px; border: 1px solid var(
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.15); }
 textarea { resize: vertical; min-height: 80px; }
 
+/* Active track row */
+tr.ca-active td { background: #eef2ff; }
+
+/* Inline play button */
+.ca-play-btn { background: var(--primary); border: none; border-radius: 50%; cursor: pointer; color: #fff; display: flex; align-items: center; justify-content: center; }
+
 /* Badge */
 .badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
 .badge-sermon       { background: #dbeafe; color: #1d4ed8; }

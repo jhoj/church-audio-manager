@@ -51,6 +51,7 @@ public static class AdminEndpoints
                 SpeakerId = req.SpeakerId,
                 SeriesId = req.SeriesId,
                 FileKey = req.FileKey,
+                ContentType = req.ContentType ?? "audio/mpeg",
                 IsPublished = req.IsPublished
             };
             db.AudioTracks.Add(track);
@@ -88,14 +89,30 @@ public static class AdminEndpoints
             return Results.NoContent();
         });
 
-        // Upload audio file — returns FileKey to use when creating/updating a track
+        // Upload audio file — returns fileKey + contentType to use when creating a track
         admin.MapPost("/tracks/upload", async (IFormFile file, StorageService storage) =>
         {
             if (file.Length == 0) return Results.BadRequest("Empty file.");
             using var stream = file.OpenReadStream();
             var key = await storage.UploadAsync(stream, file.FileName, file.ContentType);
-            return Results.Ok(new { fileKey = key });
+            return Results.Ok(new { fileKey = key, contentType = file.ContentType });
         }).DisableAntiforgery();
+
+        // ── Audio stream (admin — JWT required via group) ─────────────────────────
+        // Electron injects Authorization automatically via its request interceptor,
+        // so Angular can use <audio [src]="streamUrl"> without any extra plumbing.
+        admin.MapGet("/tracks/{id:guid}/stream", async (
+            Guid id,
+            HttpContext ctx,
+            AppDbContext db,
+            StorageService storage) =>
+        {
+            var track = await db.AudioTracks.FindAsync(id);
+            if (track is null) return Results.NotFound();
+
+            await StreamHelper.WriteAudioResponseAsync(track, ctx, storage);
+            return Results.Empty;
+        });
 
         // ── Speakers ────────────────────────────────────────────────────────────
 
@@ -196,7 +213,7 @@ record LoginRequest(string Username, string Password);
 record CreateTrackRequest(
     string Title, AudioType Type, string? Description,
     DateTime RecordedAt, int? DurationSeconds, string? Tags,
-    Guid? SpeakerId, Guid? SeriesId, string FileKey, bool IsPublished);
+    Guid? SpeakerId, Guid? SeriesId, string FileKey, string? ContentType, bool IsPublished);
 
 record UpdateTrackRequest(
     string? Title, AudioType? Type, string? Description,

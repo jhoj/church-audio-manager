@@ -15,7 +15,7 @@ public static class PublicEndpoints
         // Tracks — list with optional filtering
         group.MapGet("/tracks", async (
             AppDbContext db,
-            StorageService storage,
+            HttpContext ctx,
             AudioType? type,
             Guid? speakerId,
             Guid? seriesId,
@@ -43,20 +43,26 @@ public static class PublicEndpoints
                 .Take(pageSize)
                 .ToListAsync();
 
-            // Attach pre-signed URLs
-            var results = await Task.WhenAll(items.Select(async t => new
+            // Stream URL is permanent — no expiry, no MinIO URL leak.
+            // The API key goes in the query string so <audio src="..."> works without custom headers.
+            var apiKey = ctx.Request.Headers["X-Api-Key"].ToString()
+                         ?? ctx.Request.Query["api_key"].ToString();
+
+            var baseUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
+
+            var results = items.Select(t => new
             {
                 t.Id, t.Title, t.Type, t.Description, t.RecordedAt, t.DurationSeconds, t.Tags,
-                StreamUrl = await storage.GetPresignedUrlAsync(t.FileKey),
+                StreamUrl = $"{baseUrl}/api/public/tracks/{t.Id}/stream?api_key={apiKey}",
                 Speaker = t.Speaker is null ? null : new { t.Speaker.Id, t.Speaker.Name, t.Speaker.PhotoUrl },
                 Series = t.Series is null ? null : new { t.Series.Id, t.Series.Title, t.Series.CoverUrl }
-            }));
+            });
 
             return Results.Ok(new { total, page, pageSize, items = results });
         });
 
-        // Single track
-        group.MapGet("/tracks/{id:guid}", async (Guid id, AppDbContext db, StorageService storage) =>
+        // Single track metadata
+        group.MapGet("/tracks/{id:guid}", async (Guid id, AppDbContext db, HttpContext ctx) =>
         {
             var track = await db.AudioTracks
                 .Include(t => t.Speaker)
@@ -65,11 +71,15 @@ public static class PublicEndpoints
 
             if (track is null) return Results.NotFound();
 
+            var apiKey = ctx.Request.Headers["X-Api-Key"].ToString()
+                         ?? ctx.Request.Query["api_key"].ToString();
+            var baseUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
+
             return Results.Ok(new
             {
                 track.Id, track.Title, track.Type, track.Description,
                 track.RecordedAt, track.DurationSeconds, track.Tags,
-                StreamUrl = await storage.GetPresignedUrlAsync(track.FileKey),
+                StreamUrl = $"{baseUrl}/api/public/tracks/{track.Id}/stream?api_key={apiKey}",
                 Speaker = track.Speaker is null ? null : new { track.Speaker.Id, track.Speaker.Name, track.Speaker.PhotoUrl },
                 Series = track.Series is null ? null : new { track.Series.Id, track.Series.Title, track.Series.CoverUrl }
             });
@@ -88,18 +98,44 @@ public static class PublicEndpoints
             {
                 s.Id, s.Title, s.Description, s.CoverUrl
             }).ToListAsync()));
+
+        // ── Audio stream ─────────────────────────────────────────────────────────
+        // This endpoint is intentionally outside the ApiKeyFilter group so that
+        // browsers can set <audio src="/api/public/tracks/{id}/stream?api_key=pk_live_xxx">
+        // without needing to set custom headers (which HTMLMediaElement cannot do).
+        app.MapGet("/api/public/tracks/{id:guid}/stream", async (
+            Guid id,
+            string? api_key,
+            HttpContext ctx,
+            AppDbContext db,
+            StorageService storage) =>
+        {
+            // Accept key from query param OR header (header takes precedence)
+            var key = ctx.Request.Headers["X-Api-Key"].FirstOrDefault() ?? api_key;
+            if (string.IsNullOrEmpty(key)) return Results.Unauthorized();
+
+            var valid = await db.ApiKeys.AnyAsync(k => k.Key == key && k.IsActive);
+            if (!valid) return Results.Unauthorized();
+
+            var track = await db.AudioTracks.FirstOrDefaultAsync(t => t.Id == id && t.IsPublished);
+            if (track is null) return Results.NotFound();
+
+            await StreamHelper.WriteAudioResponseAsync(track, ctx, storage);
+            return Results.Empty;
+        });
     }
 }
 
-// Validates the pk_live_ API key on every public request
+// Validates the pk_live_ API key on every grouped public request (header or query param)
 public class ApiKeyFilter(AppDbContext db) : IEndpointFilter
 {
     public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext ctx, EndpointFilterDelegate next)
     {
-        if (!ctx.HttpContext.Request.Headers.TryGetValue("X-Api-Key", out var rawKey))
-            return Results.Unauthorized();
+        var key = ctx.HttpContext.Request.Headers["X-Api-Key"].FirstOrDefault()
+                  ?? ctx.HttpContext.Request.Query["api_key"].FirstOrDefault();
 
-        var key = rawKey.ToString();
+        if (string.IsNullOrEmpty(key)) return Results.Unauthorized();
+
         var valid = await db.ApiKeys.AnyAsync(k => k.Key == key && k.IsActive);
         if (!valid) return Results.Unauthorized();
 

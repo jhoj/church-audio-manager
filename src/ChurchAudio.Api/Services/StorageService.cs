@@ -1,7 +1,10 @@
 using Minio;
 using Minio.DataModel.Args;
+using Minio.DataModel;
 
 namespace ChurchAudio.Api.Services;
+
+public record ObjectInfo(long Size, string ContentType);
 
 public class StorageService(IMinioClient minio, IConfiguration config)
 {
@@ -26,13 +29,33 @@ public class StorageService(IMinioClient minio, IConfiguration config)
         return key;
     }
 
-    // Returns a pre-signed URL valid for 1 hour — safe to expose to the widget
-    public async Task<string> GetPresignedUrlAsync(string key, int expirySeconds = 3600)
+    public async Task<ObjectInfo> StatAsync(string key)
     {
-        return await minio.PresignedGetObjectAsync(new PresignedGetObjectArgs()
+        var stat = await minio.StatObjectAsync(new StatObjectArgs()
+            .WithBucket(_bucket)
+            .WithObject(key));
+        return new ObjectInfo(stat.Size, stat.ContentType);
+    }
+
+    // Stream a byte range from MinIO directly into the response body.
+    // offset and length map to MinIO's native range-get — only the requested
+    // bytes are transferred over the wire from MinIO to this server.
+    public async Task StreamRangeAsync(
+        string key,
+        Stream destination,
+        long offset,
+        long length,
+        CancellationToken ct = default)
+    {
+        await minio.GetObjectAsync(new GetObjectArgs()
             .WithBucket(_bucket)
             .WithObject(key)
-            .WithExpiry(expirySeconds));
+            .WithOffsetAndLength(offset, length)
+            .WithCallbackStream(async (src, innerCt) =>
+            {
+                using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, innerCt);
+                await src.CopyToAsync(destination, 81920, linked.Token);
+            }), ct);
     }
 
     public async Task DeleteAsync(string key)
