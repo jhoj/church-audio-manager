@@ -1,18 +1,19 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { SlicePipe } from '@angular/common';
 import { ApiService, ApiKey } from '../../core/api.service';
 
 @Component({
   selector: 'app-api-keys',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, SlicePipe],
   template: `
     <div class="page-header">
       <h1>API Keys</h1>
       <button class="btn btn-primary" (click)="openNew()">+ Generate Key</button>
     </div>
 
-    <p style="color:#6b7280;font-size:14px;margin-bottom:16px;">
+    <p style="color:#888;font-size:14px;margin-bottom:16px;">
       API keys give the embeddable website widget read-only access to published tracks.
       Add a key per website. Place it in the <code>data-api-key</code> attribute of the script tag.
     </p>
@@ -25,10 +26,10 @@ import { ApiService, ApiKey } from '../../core/api.service';
             <tr>
               <td>{{ k.label }}</td>
               <td>
-                <code style="font-size:13px;background:#f3f4f6;padding:2px 6px;border-radius:4px;">{{ k.key }}</code>
+                <code style="font-size:13px;background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px;">{{ k.key }}</code>
                 <button class="btn btn-ghost" style="padding:2px 8px;margin-left:6px;font-size:12px" (click)="copy(k.key)">Copy</button>
               </td>
-              <td style="color:#6b7280;font-size:13px;">{{ k.createdAt | slice:0:10 }}</td>
+              <td style="color:#888;font-size:13px;">{{ k.createdAt | slice:0:10 }}</td>
               <td>
                 <button class="btn btn-danger" (click)="remove(k.id)">Revoke</button>
               </td>
@@ -42,8 +43,8 @@ import { ApiService, ApiKey } from '../../core/api.service';
     @if (keys().length > 0) {
       <div class="card" style="margin-top:20px;">
         <h3 style="font-size:15px;font-weight:600;margin-bottom:10px;">Embed snippet</h3>
-        <p style="font-size:13px;color:#6b7280;margin-bottom:8px;">Copy this into your website's HTML where you want the player to appear:</p>
-        <pre style="background:#f3f4f6;padding:12px;border-radius:6px;font-size:12px;overflow-x:auto;">{{ snippet }}</pre>
+        <p style="font-size:13px;color:#888;margin-bottom:8px;">Copy this into your website's HTML where you want the player to appear:</p>
+        <pre style="background:#1B1B1B;border:1px solid #333;padding:12px;border-radius:6px;font-size:12px;overflow-x:auto;color:#e0e0e0;">{{ snippet }}</pre>
       </div>
     }
 

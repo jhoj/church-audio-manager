@@ -1,11 +1,12 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { SlicePipe } from '@angular/common';
 import { ApiService, Speaker } from '../../core/api.service';
 
 @Component({
   selector: 'app-speakers',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, SlicePipe],
   template: `
     <div class="page-header">
       <h1>Speakers</h1>
@@ -19,7 +20,7 @@ import { ApiService, Speaker } from '../../core/api.service';
           @for (s of speakers(); track s.id) {
             <tr>
               <td>{{ s.name }}</td>
-              <td style="color:#6b7280;font-size:13px;">{{ s.bio | slice:0:80 }}{{ (s.bio?.length ?? 0) > 80 ? '…' : '' }}</td>
+              <td style="color:#888;font-size:13px;">{{ s.bio | slice:0:80 }}{{ (s.bio?.length ?? 0) > 80 ? '…' : '' }}</td>
               <td style="display:flex;gap:8px;">
                 <button class="btn btn-ghost" (click)="openEdit(s)">Edit</button>
                 <button class="btn btn-danger" (click)="remove(s.id)">Delete</button>

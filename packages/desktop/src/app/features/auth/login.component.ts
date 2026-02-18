@@ -8,10 +8,10 @@ import { AuthService } from '../../core/auth.service';
   standalone: true,
   imports: [FormsModule],
   template: `
-    <div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#f9fafb;">
+    <div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#1B1B1B;">
       <div class="card" style="width:360px;">
         <h1 style="font-size:20px;font-weight:700;margin-bottom:4px;">Church Audio Manager</h1>
-        <p style="color:#6b7280;font-size:14px;margin-bottom:24px;">Sign in to continue</p>
+        <p style="color:#888;font-size:14px;margin-bottom:24px;">Sign in to continue</p>
 
         <form (ngSubmit)="submit()">
           <div class="form-group">
@@ -23,7 +23,7 @@ import { AuthService } from '../../core/auth.service';
             <input type="password" [(ngModel)]="password" name="password" required />
           </div>
           @if (error) {
-            <p style="color:#ef4444;font-size:13px;margin-bottom:12px;">{{ error }}</p>
+            <p style="color:#e94560;font-size:13px;margin-bottom:12px;">{{ error }}</p>
           }
           <button class="btn btn-primary" style="width:100%" type="submit" [disabled]="loading">
             {{ loading ? 'Signing in…' : 'Sign in' }}
