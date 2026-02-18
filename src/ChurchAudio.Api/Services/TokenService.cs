@@ -22,4 +22,20 @@ public class TokenService(IConfiguration config)
 
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
+
+    public string GenerateListenerToken()
+    {
+        var hours = config.GetValue<int>("Listener:TokenExpiryHours", 24);
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config["Jwt:Secret"]!));
+        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+        var token = new JwtSecurityToken(
+            issuer: config["Jwt:Issuer"],
+            audience: config["Jwt:Audience"],
+            claims: [new Claim(ClaimTypes.Role, "listener")],
+            expires: DateTime.UtcNow.AddHours(hours),
+            signingCredentials: creds);
+
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
 }

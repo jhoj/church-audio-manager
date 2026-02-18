@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="fo">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Talur - hoj.fo</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #1B1B1B;
+      --surface: #262626;
+      --border: #333;
+      --text: #e0e0e0;
+      --text-muted: #888;
+      --accent: #63D0DF;
+      --accent-dark: #4fb8c7;
+      --danger: #e94560;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Login screen ───────────────────────────────── */
+    .login-screen {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+
+    .login-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px;
+      width: 340px;
+      text-align: center;
+    }
+
+    .login-card h1 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .login-card p {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+
+    .login-card input {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 15px;
+      margin-bottom: 12px;
+      text-align: center;
+      letter-spacing: 2px;
+    }
+
+    .login-card input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(99, 208, 223, 0.15);
+    }
+
+    .login-card button {
+      width: 100%;
+      padding: 10px;
+      background: var(--accent);
+      color: #1B1B1B;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .login-card button:hover { background: var(--accent-dark); }
+
+    .login-error {
+      color: var(--danger);
+      font-size: 13px;
+      margin-bottom: 12px;
+      display: none;
+    }
+
+    /* ── Player screen ──────────────────────────────── */
+    .player-screen { display: none; }
+
+    .header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .header h1 { font-size: 18px; font-weight: 700; }
+
+    .header button {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .header button:hover { color: var(--text); border-color: #555; }
+
+    .filters {
+      padding: 16px 24px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .filter-btn {
+      padding: 6px 14px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .filter-btn:hover { border-color: var(--accent); color: var(--text); }
+    .filter-btn.active { background: var(--accent); color: #1B1B1B; border-color: var(--accent); font-weight: 600; }
+
+    .track-list {
+      padding: 0 24px 120px;
+    }
+
+    .track-item {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+
+    .track-item:hover { background: rgba(255, 255, 255, 0.03); margin: 0 -24px; padding: 14px 24px; }
+
+    .track-play {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(99, 208, 223, 0.1);
+      color: var(--accent);
+      font-size: 14px;
+      cursor: pointer;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .track-play:hover { background: rgba(99, 208, 223, 0.2); }
+
+    .track-info { flex: 1; min-width: 0; }
+    .track-title { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .track-meta { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+    .track-badge {
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .track-badge.sermon { background: rgba(99, 208, 223, 0.12); color: var(--accent); }
+    .track-badge.worship { background: rgba(46, 204, 113, 0.12); color: #2ecc71; }
+
+    /* ── Now playing bar ────────────────────────────── */
+    .now-playing {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 12px 24px;
+      display: none;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .now-playing.active { display: flex; }
+    .now-playing-title { font-size: 14px; font-weight: 500; white-space: nowrap; }
+    .now-playing-speaker { font-size: 12px; color: var(--text-muted); }
+    .now-playing audio { flex: 1; height: 36px; }
+
+    .now-playing-close {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 18px;
+      cursor: pointer;
+      padding: 4px;
+    }
+
+    .now-playing-close:hover { color: var(--text); }
+
+    .loading { text-align: center; padding: 40px; color: var(--text-muted); }
+
+    /* ── Scrollbar ──────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+  </style>
+</head>
+<body>
+
+  <!-- ── Login ──────────────────────────────────────── -->
+  <div class="login-screen" id="loginScreen">
+    <div class="login-card">
+      <h1>Talur</h1>
+      <p>Skriva loyniorð fyri at lata upp</p>
+      <div class="login-error" id="loginError">Skeivt loyniorð</div>
+      <form id="loginForm">
+        <input type="password" id="passwordInput" placeholder="Loyniorð" autofocus>
+        <button type="submit">Lat upp</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Player ─────────────────────────────────────── -->
+  <div class="player-screen" id="playerScreen">
+    <div class="header">
+      <h1>Talur</h1>
+      <button id="logoutBtn">Loka</button>
+    </div>
+
+    <div class="filters" id="filters">
+      <button class="filter-btn active" data-type="">Alt</button>
+      <button class="filter-btn" data-type="Sermon">Talur</button>
+      <button class="filter-btn" data-type="Worship">Lovsongar</button>
+      <button class="filter-btn" data-type="Podcast">Podcast</button>
+    </div>
+
+    <div class="track-list" id="trackList">
+      <div class="loading">Innlesur...</div>
+    </div>
+  </div>
+
+  <!-- ── Now Playing ────────────────────────────────── -->
+  <div class="now-playing" id="nowPlaying">
+    <div>
+      <div class="now-playing-title" id="npTitle"></div>
+      <div class="now-playing-speaker" id="npSpeaker"></div>
+    </div>
+    <audio id="audioPlayer" controls></audio>
+    <button class="now-playing-close" id="npClose">&times;</button>
+  </div>
+
+  <script>
+    // ── Configuration ──────────────────────────────────
+    // Only the API URL is needed. No API key, no password in source.
+    // The password is validated server-side and a JWT is returned.
+    const API_URL = 'https://api.hoj.fo';
+
+    const TOKEN_KEY = 'talur_token';
+
+    // ── Auth ───────────────────────────────────────────
+    function getToken() {
+      return sessionStorage.getItem(TOKEN_KEY);
+    }
+
+    function isLoggedIn() {
+      const token = getToken();
+      if (!token) return false;
+      // Check if token is expired (JWT payload is base64)
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        return payload.exp * 1000 > Date.now();
+      } catch {
+        return false;
+      }
+    }
+
+    function showPlayer() {
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('playerScreen').style.display = 'block';
+      loadTracks();
+    }
+
+    function showLogin() {
+      sessionStorage.removeItem(TOKEN_KEY);
+      document.getElementById('playerScreen').style.display = 'none';
+      document.getElementById('loginScreen').style.display = 'flex';
+      document.getElementById('passwordInput').value = '';
+      stopPlayback();
+    }
+
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = e.target.querySelector('button');
+      const pw = document.getElementById('passwordInput').value;
+      const err = document.getElementById('loginError');
+
+      btn.disabled = true;
+      btn.textContent = 'Leitar...';
+      err.style.display = 'none';
+
+      try {
+        const res = await fetch(`${API_URL}/api/listener/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: pw }),
+        });
+
+        if (!res.ok) {
+          err.style.display = 'block';
+          document.getElementById('passwordInput').value = '';
+          document.getElementById('passwordInput').focus();
+          return;
+        }
+
+        const data = await res.json();
+        sessionStorage.setItem(TOKEN_KEY, data.token);
+        showPlayer();
+      } catch {
+        err.textContent = 'Sambandsfeilur';
+        err.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Lat upp';
+      }
+    });
+
+    document.getElementById('logoutBtn').addEventListener('click', showLogin);
+
+    // Auto-login if token is still valid
+    if (isLoggedIn()) showPlayer();
+
+    // ── API ────────────────────────────────────────────
+    async function api(path) {
+      const res = await fetch(`${API_URL}/api/public${path}`, {
+        headers: { 'Authorization': `Bearer ${getToken()}` },
+      });
+      if (res.status === 401) { showLogin(); throw new Error('Session expired'); }
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      return res.json();
+    }
+
+    // ── Tracks ─────────────────────────────────────────
+    let currentType = '';
+
+    async function loadTracks() {
+      const list = document.getElementById('trackList');
+      list.innerHTML = '<div class="loading">Innlesur...</div>';
+
+      try {
+        const typeParam = currentType ? `?type=${currentType}` : '';
+        const data = await api(`/tracks${typeParam}`);
+        renderTracks(data.items);
+      } catch (err) {
+        if (err.message !== 'Session expired') {
+          list.innerHTML = '<div class="loading">Feilur - royn aftur</div>';
+        }
+        console.error(err);
+      }
+    }
+
+    function renderTracks(tracks) {
+      const list = document.getElementById('trackList');
+
+      if (!tracks.length) {
+        list.innerHTML = '<div class="loading">Eingin talur funnin</div>';
+        return;
+      }
+
+      list.innerHTML = tracks.map(t => `
+        <div class="track-item" data-url="${t.streamUrl}" data-title="${esc(t.title)}" data-speaker="${esc(t.speaker?.name || '')}">
+          <button class="track-play">&#9654;</button>
+          <div class="track-info">
+            <div class="track-title">${esc(t.title)}</div>
+            <div class="track-meta">
+              ${t.speaker ? t.speaker.name + ' &middot; ' : ''}${t.recordedAt.slice(0, 10)}
+              ${t.series ? ' &middot; ' + t.series.title : ''}
+            </div>
+          </div>
+          <span class="track-badge ${t.type.toLowerCase()}">${esc(t.type)}</span>
+        </div>
+      `).join('');
+
+      list.querySelectorAll('.track-item').forEach(el => {
+        el.addEventListener('click', () => {
+          playTrack(el.dataset.url, el.dataset.title, el.dataset.speaker);
+        });
+      });
+    }
+
+    function esc(s) {
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    // ── Filters ────────────────────────────────────────
+    document.getElementById('filters').addEventListener('click', (e) => {
+      const btn = e.target.closest('.filter-btn');
+      if (!btn) return;
+
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentType = btn.dataset.type;
+      loadTracks();
+    });
+
+    // ── Playback ───────────────────────────────────────
+    const audio = document.getElementById('audioPlayer');
+
+    function playTrack(url, title, speaker) {
+      audio.src = url;
+      audio.play();
+      document.getElementById('npTitle').textContent = title;
+      document.getElementById('npSpeaker').textContent = speaker;
+      document.getElementById('nowPlaying').classList.add('active');
+    }
+
+    function stopPlayback() {
+      audio.pause();
+      audio.src = '';
+      document.getElementById('nowPlaying').classList.remove('active');
+    }
+
+    document.getElementById('npClose').addEventListener('click', stopPlayback);
+  </script>
+</body>
+</html>

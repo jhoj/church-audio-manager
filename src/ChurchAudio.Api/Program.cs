@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json.Serialization;
 using ChurchAudio.Api.Data;
 using ChurchAudio.Api.Endpoints;
 using ChurchAudio.Api.Services;
@@ -8,6 +9,12 @@ using Microsoft.IdentityModel.Tokens;
 using Minio;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.ConfigureHttpJsonOptions(opt =>
+{
+    opt.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    opt.SerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+});
 
 // ── Database ────────────────────────────────────────────────────────────────
 builder.Services.AddDbContext<AppDbContext>(opt =>
@@ -43,15 +50,15 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
-// ── CORS — allow the widget to call from any website ───────────────────────
-builder.Services.AddCors(opt => opt.AddPolicy("widget", p =>
-    p.AllowAnyOrigin()     // Public endpoints; API key handles auth
-     .WithMethods("GET")
-     .WithHeaders("X-Api-Key")));
+// ── CORS ─────────────────────────────────────────────────────────────────────
+builder.Services.AddCors(opt => opt.AddDefaultPolicy(p =>
+    p.AllowAnyOrigin()
+     .AllowAnyMethod()
+     .AllowAnyHeader()));
 
 var app = builder.Build();
 
-app.UseCors("widget");
+app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -63,9 +70,74 @@ using (var scope = app.Services.CreateScope())
 
     var storage = scope.ServiceProvider.GetRequiredService<StorageService>();
     await storage.EnsureBucketAsync();
+
+    // Seed default admin user if none exists
+    if (!await db.AdminUsers.AnyAsync())
+    {
+        db.AdminUsers.Add(new ChurchAudio.Api.Models.AdminUser
+        {
+            Id = Guid.NewGuid(),
+            Username = "admin",
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("admin")
+        });
+        await db.SaveChangesAsync();
+    }
 }
+
+// ── Listener auth ────────────────────────────────────────────────────────────
+app.MapPost("/api/listener/login", (ListenerLoginRequest req, IConfiguration config, TokenService tokens) =>
+{
+    var expected = config["Listener:Password"];
+    if (string.IsNullOrEmpty(expected) || req.Password != expected)
+        return Results.Json(new { error = "Invalid password" }, statusCode: 401);
+
+    return Results.Ok(new { token = tokens.GenerateListenerToken() });
+});
 
 app.MapPublicEndpoints();
 app.MapAdminEndpoints();
 
+// ── Audio streaming with Range support ───────────────────────────────────────
+app.MapGet("/api/stream/{trackId:guid}", async (Guid trackId, HttpContext http, AppDbContext db, StorageService storage) =>
+{
+    var track = await db.AudioTracks.FindAsync(trackId);
+    if (track is null) return Results.NotFound();
+
+    var (stream, totalSize, contentType) = await storage.GetObjectAsync(track.FileKey);
+
+    var request = http.Request;
+    var response = http.Response;
+
+    if (request.Headers.ContainsKey("Range"))
+    {
+        var rangeHeader = request.Headers.Range.ToString(); // e.g. "bytes=0-1023"
+        var range = rangeHeader.Replace("bytes=", "").Split('-');
+        var start = long.Parse(range[0]);
+        var end = range.Length > 1 && !string.IsNullOrEmpty(range[1]) ? long.Parse(range[1]) : totalSize - 1;
+        var chunkSize = end - start + 1;
+
+        response.StatusCode = 206;
+        response.Headers.ContentRange = $"bytes {start}-{end}/{totalSize}";
+        response.Headers.AcceptRanges = "bytes";
+        response.ContentType = contentType;
+        response.ContentLength = chunkSize;
+
+        stream.Seek(start, SeekOrigin.Begin);
+        var buffer = new byte[chunkSize];
+        await stream.ReadExactlyAsync(buffer, 0, (int)chunkSize);
+        await response.Body.WriteAsync(buffer);
+        stream.Dispose();
+        return Results.Empty;
+    }
+
+    response.Headers.AcceptRanges = "bytes";
+    response.ContentType = contentType;
+    response.ContentLength = totalSize;
+    await stream.CopyToAsync(response.Body);
+    stream.Dispose();
+    return Results.Empty;
+});
+
 app.Run();
+
+record ListenerLoginRequest(string Password);

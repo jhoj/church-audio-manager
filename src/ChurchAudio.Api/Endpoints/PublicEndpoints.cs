@@ -1,6 +1,8 @@
+using System.Security.Claims;
 using ChurchAudio.Api.Data;
 using ChurchAudio.Api.Models;
 using ChurchAudio.Api.Services;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.EntityFrameworkCore;
 
 namespace ChurchAudio.Api.Endpoints;
@@ -126,19 +128,33 @@ public static class PublicEndpoints
     }
 }
 
-// Validates the pk_live_ API key on every grouped public request (header or query param)
+// Validates either an X-Api-Key header/query param OR a valid listener JWT
 public class ApiKeyFilter(AppDbContext db) : IEndpointFilter
 {
     public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext ctx, EndpointFilterDelegate next)
     {
-        var key = ctx.HttpContext.Request.Headers["X-Api-Key"].FirstOrDefault()
-                  ?? ctx.HttpContext.Request.Query["api_key"].FirstOrDefault();
+        var http = ctx.HttpContext;
 
-        if (string.IsNullOrEmpty(key)) return Results.Unauthorized();
+        // Option 1: API key from header or query param (for widget / server-to-server usage)
+        var key = http.Request.Headers["X-Api-Key"].FirstOrDefault()
+                  ?? http.Request.Query["api_key"].FirstOrDefault();
 
-        var valid = await db.ApiKeys.AnyAsync(k => k.Key == key && k.IsActive);
-        if (!valid) return Results.Unauthorized();
+        if (!string.IsNullOrEmpty(key))
+        {
+            var valid = await db.ApiKeys.AnyAsync(k => k.Key == key && k.IsActive);
+            if (valid) return await next(ctx);
+        }
 
-        return await next(ctx);
+        // Option 2: Bearer token with "listener" role (for web app usage)
+        var authResult = await http.AuthenticateAsync();
+        if (authResult.Succeeded)
+        {
+            var isListener = authResult.Principal?.IsInRole("listener") == true;
+            var isAdmin = authResult.Principal?.HasClaim(ClaimTypes.Name, "") == false; // any admin JWT works too
+            if (isListener || isAdmin)
+                return await next(ctx);
+        }
+
+        return Results.Unauthorized();
     }
 }
